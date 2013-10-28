@@ -14,6 +14,7 @@ namespace Kinect.Server
 
         static bool _initialized = false;
         static Skeleton[] _skeletons = new Skeleton[6];
+        static byte[] _pixels;
 
         static void Main(string[] args)
         {
@@ -36,11 +37,13 @@ namespace Kinect.Server
                     Console.WriteLine("Connected to " + socket.ConnectionInfo.ClientIpAddress);
                     _sockets.Add(socket);
                 };
+
                 socket.OnClose = () =>
                 {
                     Console.WriteLine("Disconnected from " + socket.ConnectionInfo.ClientIpAddress);
                     _sockets.Remove(socket);
                 };
+                
                 socket.OnMessage = message =>
                 {
                     Console.WriteLine(message);
@@ -55,9 +58,60 @@ namespace Kinect.Server
         private static void InitilizeKinect()
         {
             _sensor = KinectSensor.KinectSensors.SingleOrDefault();
+            _sensor.ColorStream.Enable();
             _sensor.SkeletonStream.Enable();
-            _sensor.SkeletonFrameReady += new EventHandler<SkeletonFrameReadyEventArgs>(Sensor_SkeletonFrameReady);
+            _sensor.AllFramesReady += Sensor_AllFramesReady;
             _sensor.Start();
+        }
+
+        static void Sensor_AllFramesReady(object sender, AllFramesReadyEventArgs e)
+        {
+            if (!_initialized) return;
+
+            // 1. Send skeletanl data.
+            List<Skeleton> users = new List<Skeleton>();
+
+            using (var frame = e.OpenSkeletonFrame())
+            {
+                if (frame != null)
+                {
+                    frame.CopySkeletonDataTo(_skeletons);
+
+                    foreach (var user in _skeletons)
+                    {
+                        if (user.TrackingState == SkeletonTrackingState.Tracked)
+                        {
+                            users.Add(user);
+                        }
+                    }
+
+                    if (users.Count > 0)
+                    {
+                        string json = users.Serialize();
+
+                        foreach (var socket in _sockets)
+                        {
+                            socket.Send(json);
+                        }
+                    }
+                }
+            }
+
+            // 2. Send image data.
+            using (var frame = e.OpenColorImageFrame())
+            {
+                if (frame != null)
+                {
+                    _pixels = new byte[frame.PixelDataLength];
+
+                    frame.CopyPixelDataTo(_pixels);
+
+                    foreach (var socket in _sockets)
+                    {
+                        socket.Send(_pixels);
+                    }
+                }
+            }
         }
 
         static void Sensor_SkeletonFrameReady(object sender, SkeletonFrameReadyEventArgs e)
