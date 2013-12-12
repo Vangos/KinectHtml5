@@ -1,4 +1,4 @@
-﻿window.onload = function () {
+window.onload = function () {
     var status = document.getElementById("status");
     var canvas = document.getElementById("canvas");
     var context = canvas.getContext("2d");
@@ -12,7 +12,6 @@
 
     // Initialize a new web socket.
     var socket = new WebSocket("ws://localhost:8181/KinectHtml5");
-    socket.binaryType = "blob";
 
     // Connection established.
     socket.onopen = function () {
@@ -27,14 +26,12 @@
     // Receive data FROM the server!
     socket.onmessage = function (event) {
         if (typeof event.data === "string") {
-            status.innerHTML = "Kinect skeletal data received.";
+            status.innerHTML = "Kinect skeleton received.";
 
             // 1. Get the data in JSON format.
-            var jsonObject = eval('(' + event.data + ')');
+            var jsonObject = JSON.parse(event.data);
 
-            context.clearRect(0, 0, canvas.width, canvas.height);
-            context.fillStyle = "#FF0000";
-            context.beginPath();
+            context.clearRect(0, 0, canvas.width, canvas.height);            
 
             // 2. Display the skeleton joints.
             for (var i = 0; i < jsonObject.skeletons.length; i++) {
@@ -42,29 +39,16 @@
                     var joint = jsonObject.skeletons[i].joints[j];
 
                     // Draw!!!
-                    context.arc(parseFloat(joint.x), parseFloat(joint.y), 10, 0, Math.PI * 2, true);
+                    context.fillStyle = "#FF0000";
+                    context.beginPath();
+                    context.arc(joint.x, joint.y, 10, 0, Math.PI * 2, true);
+                    context.closePath();
+                    context.fill();
                 }
-            }
-
-            context.closePath();
-            context.fill();
+            }            
 
             // Inform the server about the update.
             socket.send("Skeleton updated on: " + (new Date()).toDateString() + ", " + (new Date()).toTimeString());
-        }
-        else if (event.data instanceof Blob) {
-            status.innerHTML = "Kinect image data received.";
-
-            // 1. Get the data in binary format.
-            var blob = event.data;
-
-            // 2. Create a new temp URL for the binary object.
-            window.URL = window.URL || window.webkitURL;
-            var source = window.URL.createObjectURL(blob);
-
-            // Create an image tag programmatically.
-            var image = document.getElementById("image");
-            image.src = source;
         }
     };
 };
